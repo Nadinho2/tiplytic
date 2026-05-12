@@ -1,5 +1,6 @@
-import { Card, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { SubmitPredictionForm } from "@/components/community/SubmitPredictionForm";
+import { MyCommunityPredictionsTable } from "@/components/dashboard/MyCommunityPredictionsTable";
 
 export default function Page() {
   return (
@@ -14,6 +15,16 @@ export default function Page() {
       </Card>
 
       <SubmitPredictionForm />
+
+      <Card>
+        <CardHeader>
+          <div className="text-sm font-semibold text-foreground">My submissions</div>
+          <p className="mt-1 text-sm text-muted">Your most recent community predictions.</p>
+        </CardHeader>
+        <CardContent>
+          <MyCommunityPredictionsTable />
+        </CardContent>
+      </Card>
     </div>
   );
 }

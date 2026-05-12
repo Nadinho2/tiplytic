@@ -21,6 +21,28 @@ function createServiceClient() {
   });
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function normalizeTier(value: unknown) {
+  const t = String(value ?? "").toLowerCase();
+  return t === "elite" ? "elite" : t === "pro" ? "pro" : t === "basic" ? "basic" : "free";
+}
+
+function tierFromClaims(claims: unknown) {
+  if (!isRecord(claims)) return null;
+  const publicMetadata = isRecord(claims.publicMetadata)
+    ? claims.publicMetadata
+    : isRecord(claims.public_metadata)
+      ? claims.public_metadata
+      : null;
+  if (!publicMetadata || !isRecord(publicMetadata)) return null;
+  const sub = isRecord(publicMetadata.subscription) ? publicMetadata.subscription : null;
+  if (!sub) return null;
+  return normalizeTier(sub.tier);
+}
+
 type Period = "week" | "month" | "all";
 type Sort = "win_rate" | "roi" | "total_picks" | "streak";
 
@@ -59,17 +81,24 @@ export async function GET(request: Request) {
 
   const supabase = createServiceClient();
 
-  const { userId } = await auth();
-  let viewerTier: "free" | "basic" | "pro" | "elite" = "free";
+  const { userId, sessionClaims } = await auth();
+  let viewerTier: "free" | "basic" | "pro" | "elite" = tierFromClaims(sessionClaims) ?? "free";
   if (userId) {
+    const { data, error } = await supabase
+      .from("user_subscriptions")
+      .select("tier")
+      .eq("clerk_user_id", userId)
+      .maybeSingle<{ tier: string }>();
+    if (!error && data?.tier) viewerTier = normalizeTier(data.tier);
+  }
+
+  if (viewerTier === "free" && userId) {
     try {
-      const { data } = await supabase
-        .from("user_subscriptions")
-        .select("tier")
-        .eq("clerk_user_id", userId)
-        .maybeSingle<{ tier: string }>();
-      const t = String(data?.tier ?? "free").toLowerCase();
-      viewerTier = t === "elite" ? "elite" : t === "pro" ? "pro" : t === "basic" ? "basic" : "free";
+      const clerk = await clerkClient();
+      const u = await clerk.users.getUser(userId);
+      const meta = (u.publicMetadata ?? {}) as Record<string, unknown>;
+      const sub = meta.subscription as Record<string, unknown> | null;
+      if (sub) viewerTier = normalizeTier(sub.tier);
     } catch {}
   }
 

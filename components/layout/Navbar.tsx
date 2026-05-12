@@ -28,6 +28,7 @@ export function Navbar() {
   const { user, userSubscription, isLoading } = useUser();
 
   const tierLabel = isLoading ? "…" : getTierLabel(userSubscription?.tier);
+  const navItems = user ? [...nav, { href: "/dashboard/community", label: "Community" }] : nav;
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/70 backdrop-blur">
@@ -40,7 +41,7 @@ export function Navbar() {
         </Link>
 
         <nav className="hidden items-center gap-8 md:flex">
-          {nav.map((item) => {
+          {navItems.map((item) => {
             const isActive =
               item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
 

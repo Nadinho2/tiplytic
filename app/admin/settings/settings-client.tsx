@@ -51,18 +51,22 @@ export function SettingsClient({ initialTab }: { initialTab: string }) {
   const [settings, setSettings] = useState<SettingsMap>({});
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [settingsTableMissing, setSettingsTableMissing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoading(true);
       const res = await fetch("/api/admin/settings", { method: "GET" }).catch(() => null);
-      const json = (await res?.json().catch(() => null)) as { settings?: SettingsMap; error?: string } | null;
+      const json = (await res?.json().catch(() => null)) as
+        | { settings?: SettingsMap; error?: string; tableMissing?: boolean }
+        | null;
       if (cancelled) return;
       if (!res || !res.ok || !json?.settings) {
         toast.error(json?.error || "Failed to load settings");
         setSettings({});
         setDraft({});
+        setSettingsTableMissing(false);
         setLoading(false);
         return;
       }
@@ -70,6 +74,10 @@ export function SettingsClient({ initialTab }: { initialTab: string }) {
       const d: Record<string, string> = {};
       for (const [k, v] of Object.entries(json.settings)) d[k] = v.value ?? "";
       setDraft(d);
+      setSettingsTableMissing(Boolean(json.tableMissing));
+      if (json.tableMissing) {
+        toast.error(json.error || "site_settings table is missing in Supabase");
+      }
       setLoading(false);
     }
     void load();
@@ -229,7 +237,7 @@ export function SettingsClient({ initialTab }: { initialTab: string }) {
                         <button
                           type="button"
                           onClick={() => void save(r.key)}
-                          disabled={isSaving}
+                          disabled={isSaving || settingsTableMissing}
                           className="rounded-xl bg-[#3B82F6] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
                         >
                           {isSaving ? "Saving…" : "Save"}
@@ -246,4 +254,3 @@ export function SettingsClient({ initialTab }: { initialTab: string }) {
     </div>
   );
 }
-

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { createClient } from "@supabase/supabase-js";
 
 import {
@@ -25,6 +25,31 @@ function createServiceClient() {
   });
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function normalizeTier(value: unknown) {
+  const t = String(value ?? "").toLowerCase();
+  if (t === "elite") return "elite";
+  if (t === "pro") return "pro";
+  if (t === "basic") return "basic";
+  return "free";
+}
+
+function tierFromClaims(claims: unknown) {
+  if (!isRecord(claims)) return null;
+  const publicMetadata = isRecord(claims.publicMetadata)
+    ? claims.publicMetadata
+    : isRecord(claims.public_metadata)
+      ? claims.public_metadata
+      : null;
+  if (!publicMetadata || !isRecord(publicMetadata)) return null;
+  const sub = isRecord(publicMetadata.subscription) ? publicMetadata.subscription : null;
+  if (!sub) return null;
+  return normalizeTier(sub.tier);
+}
+
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -39,7 +64,7 @@ type DbPrediction = Record<string, unknown> & {
 };
 
 export async function GET(request: Request) {
-  const { userId } = await auth();
+  const { userId, sessionClaims } = await auth();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -49,15 +74,25 @@ export async function GET(request: Request) {
 
   const supabase = createServiceClient();
 
-  let userTier = "free";
-  try {
-    const { data } = await supabase
+  let userTier = tierFromClaims(sessionClaims) ?? "free";
+  if (userTier === "free") {
+    const { data, error } = await supabase
       .from("user_subscriptions")
       .select("tier")
       .eq("clerk_user_id", userId)
       .maybeSingle<{ tier: string }>();
-    userTier = data?.tier ?? "free";
-  } catch {}
+    if (!error && data?.tier) userTier = normalizeTier(data.tier);
+  }
+
+  if (userTier === "free") {
+    try {
+      const clerk = await clerkClient();
+      const u = await clerk.users.getUser(userId);
+      const meta = (u.publicMetadata ?? {}) as Record<string, unknown>;
+      const sub = meta.subscription as Record<string, unknown> | null;
+      if (sub) userTier = normalizeTier(sub.tier);
+    } catch {}
+  }
 
   const limit = getDailyPredictionLimit(userTier);
   const day = todayKey();

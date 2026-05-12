@@ -11,6 +11,15 @@ function isTier(v: string): v is Tier {
   return v === "free" || v === "basic" || v === "pro" || v === "elite";
 }
 
+function isMissingUserSubscriptionsTableError(message: string) {
+  const m = message.toLowerCase();
+  if (!m.includes("user_subscriptions")) return false;
+  if (m.includes("schema cache")) return true;
+  if (m.includes("could not find the table")) return true;
+  if (m.includes("relation") && m.includes("does not exist")) return true;
+  return false;
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -35,7 +44,9 @@ export async function POST(
     const { error } = await supabase.from("user_subscriptions").upsert(patch as never, {
       onConflict: "clerk_user_id",
     });
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error && !isMissingUserSubscriptionsTableError(error.message)) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
 
     try {
       const clerk = await clerkClient();

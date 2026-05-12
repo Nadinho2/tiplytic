@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, ListChecks, Trophy, LayoutDashboard, User } from "lucide-react";
+import { Home, ListChecks, Trophy, LayoutDashboard, User, Users } from "lucide-react";
 
 import { useAuth } from "@clerk/nextjs";
 
@@ -19,6 +19,7 @@ const tabs: Tab[] = [
   { href: "/", label: "Home", Icon: Home },
   { href: "/predictions", label: "Predictions", Icon: ListChecks },
   { href: "/tipsters", label: "Tipsters", Icon: Trophy },
+  { href: "/dashboard/community", label: "Community", Icon: Users, requiresAuth: true },
   { href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard, requiresAuth: true },
   { href: "/profile", label: "Profile", Icon: User, requiresAuth: true },
 ];
@@ -29,7 +30,7 @@ export function MobileTabBar() {
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-background/85 backdrop-blur md:hidden">
-      <div className="mx-auto grid max-w-3xl grid-cols-5 px-2 py-2">
+      <div className="mx-auto grid max-w-3xl grid-cols-6 px-2 py-2">
         {tabs.map((t) => {
           const href = t.requiresAuth && !userId ? "/sign-in" : t.href;
           const isActive = t.href === "/" ? pathname === "/" : pathname.startsWith(t.href);

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { createClient } from "@supabase/supabase-js";
 
 import { canSeeAdminAnalysis } from "@/lib/tier-access";
@@ -33,17 +33,55 @@ function startOfTomorrowIso() {
   return d.toISOString();
 }
 
-async function getUserTier(supabase: ReturnType<typeof createServiceClient>, userId: string) {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function normalizeTier(value: unknown) {
+  const t = String(value ?? "").toLowerCase();
+  if (t === "elite") return "elite";
+  if (t === "pro") return "pro";
+  if (t === "basic") return "basic";
+  return "free";
+}
+
+function tierFromClaims(claims: unknown) {
+  if (!isRecord(claims)) return null;
+  const publicMetadata = isRecord(claims.publicMetadata)
+    ? claims.publicMetadata
+    : isRecord(claims.public_metadata)
+      ? claims.public_metadata
+      : null;
+  if (!publicMetadata || !isRecord(publicMetadata)) return null;
+  const sub = isRecord(publicMetadata.subscription) ? publicMetadata.subscription : null;
+  if (!sub) return null;
+  return normalizeTier(sub.tier);
+}
+
+async function getUserTier(
+  supabase: ReturnType<typeof createServiceClient>,
+  userId: string,
+  sessionClaims: unknown,
+) {
+  const fromClaims = tierFromClaims(sessionClaims);
+  if (fromClaims) return fromClaims;
+
+  const { data, error } = await supabase
+    .from("user_subscriptions")
+    .select("tier")
+    .eq("clerk_user_id", userId)
+    .maybeSingle<{ tier: string }>();
+  if (!error && data?.tier) return normalizeTier(data.tier);
+
   try {
-    const { data } = await supabase
-      .from("user_subscriptions")
-      .select("tier")
-      .eq("clerk_user_id", userId)
-      .maybeSingle<{ tier: string }>();
-    return data?.tier ?? "free";
-  } catch {
-    return "free";
-  }
+    const clerk = await clerkClient();
+    const u = await clerk.users.getUser(userId);
+    const meta = (u.publicMetadata ?? {}) as Record<string, unknown>;
+    const sub = meta.subscription as Record<string, unknown> | null;
+    if (sub) return normalizeTier(sub.tier);
+  } catch {}
+
+  return "free";
 }
 
 type AdminPickStatsRow = {
@@ -106,8 +144,8 @@ export async function GET() {
     .map((r) => String((r as { result?: unknown }).result ?? "").toLowerCase())
     .filter((v) => v === "win" || v === "loss" || v === "void");
 
-  const { userId } = await auth();
-  const tier = userId ? await getUserTier(supabase, userId) : "free";
+  const { userId, sessionClaims } = await auth();
+  const tier = userId ? await getUserTier(supabase, userId, sessionClaims) : "free";
   const allowAdmin = canSeeAdminAnalysis(tier);
 
   if (pick && !allowAdmin) {

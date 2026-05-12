@@ -1,7 +1,7 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { createClient } from "@supabase/supabase-js";
 
 function requiredEnv(name: string) {
@@ -20,26 +20,56 @@ function createServiceClient() {
 
 type Body = { targetUserId: string };
 
-async function getTier(userId: string) {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function normalizeTier(value: unknown) {
+  const t = String(value ?? "").toLowerCase();
+  return t === "elite" ? "elite" : t === "pro" ? "pro" : t === "basic" ? "basic" : "free";
+}
+
+function tierFromClaims(claims: unknown) {
+  if (!isRecord(claims)) return null;
+  const publicMetadata = isRecord(claims.publicMetadata)
+    ? claims.publicMetadata
+    : isRecord(claims.public_metadata)
+      ? claims.public_metadata
+      : null;
+  if (!publicMetadata || !isRecord(publicMetadata)) return null;
+  const sub = isRecord(publicMetadata.subscription) ? publicMetadata.subscription : null;
+  if (!sub) return null;
+  return normalizeTier(sub.tier);
+}
+
+async function getTier(userId: string, sessionClaims: unknown) {
+  const fromClaims = tierFromClaims(sessionClaims);
+  if (fromClaims) return fromClaims;
+
   const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("user_subscriptions")
+    .select("tier")
+    .eq("clerk_user_id", userId)
+    .maybeSingle<{ tier: string }>();
+  if (!error && data?.tier) return normalizeTier(data.tier);
+
   try {
-    const { data } = await supabase
-      .from("user_subscriptions")
-      .select("tier")
-      .eq("clerk_user_id", userId)
-      .maybeSingle<{ tier: string }>();
-    const t = String(data?.tier ?? "free").toLowerCase();
-    return t === "elite" ? "elite" : t === "pro" ? "pro" : t === "basic" ? "basic" : "free";
-  } catch {
-    return "free";
-  }
+    const clerk = await clerkClient();
+    const u = await clerk.users.getUser(userId);
+    const meta = (u.publicMetadata ?? {}) as Record<string, unknown>;
+    const sub = meta.subscription as Record<string, unknown> | null;
+    if (sub) return normalizeTier(sub.tier);
+  } catch {}
+
+  return "free";
 }
 
 export async function POST(request: Request) {
-  const { userId } = await auth();
+  const { userId, sessionClaims } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const tier = await getTier(userId);
+  const tier = await getTier(userId, sessionClaims);
   if (tier !== "pro" && tier !== "elite") {
     return NextResponse.json({ error: "Follow is a Pro/Elite feature" }, { status: 403 });
   }
@@ -80,10 +110,10 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const { userId } = await auth();
+  const { userId, sessionClaims } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const tier = await getTier(userId);
+  const tier = await getTier(userId, sessionClaims);
   if (tier !== "pro" && tier !== "elite") {
     return NextResponse.json({ error: "Follow is a Pro/Elite feature" }, { status: 403 });
   }

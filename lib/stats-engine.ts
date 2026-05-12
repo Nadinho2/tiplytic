@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
+import { clerkClient } from "@clerk/nextjs/server";
 
 import { TIER_HIERARCHY, type Tier } from "@/lib/tier-access";
 
@@ -170,14 +171,22 @@ export async function getUserStats(userId: string): Promise<{
   const supabase = createServiceClient();
 
   let tier: Tier = "free";
-  try {
-    const { data } = await supabase
-      .from("user_subscriptions")
-      .select("tier")
-      .eq("clerk_user_id", userId)
-      .maybeSingle<{ tier: string }>();
-    tier = normalizeTier(data?.tier);
-  } catch {}
+  const { data: tierRow, error: tierError } = await supabase
+    .from("user_subscriptions")
+    .select("tier")
+    .eq("clerk_user_id", userId)
+    .maybeSingle<{ tier: string }>();
+  if (!tierError && tierRow?.tier) tier = normalizeTier(tierRow.tier);
+
+  if (tier === "free") {
+    try {
+      const clerk = await clerkClient();
+      const u = await clerk.users.getUser(userId);
+      const meta = (u.publicMetadata ?? {}) as Record<string, unknown>;
+      const sub = meta.subscription as Record<string, unknown> | null;
+      if (sub) tier = normalizeTier(sub.tier as string);
+    } catch {}
+  }
 
   const { data: preds } = await supabase
     .from("community_predictions")

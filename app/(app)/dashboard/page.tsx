@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Container } from "@/components/ui/container";
+import { ButtonLink } from "@/components/ui/button";
 import { StreakBadge } from "@/components/dashboard/StreakBadge";
 import {
   getTierProgressLabel,
@@ -176,6 +177,14 @@ export default async function Page() {
           </div>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-background/20 p-4">
+            <div className="text-sm text-muted">
+              Want to share your picks and climb the leaderboard?
+            </div>
+            <ButtonLink href="/dashboard/community" variant="primary" size="sm">
+              Submit a prediction
+            </ButtonLink>
+          </div>
           {typeof trialEndsInDays === "number" ? (
             <div className="mb-4 rounded-2xl border border-[#3B82F6]/25 bg-[#3B82F6]/10 p-4 text-sm text-[#3B82F6]">
               Trial ends in {trialEndsInDays} day{trialEndsInDays === 1 ? "" : "s"} — add payment to continue.
