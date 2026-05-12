@@ -8,6 +8,7 @@ import { createClientComponentClient } from "@/lib/supabase-client";
 import { cn } from "@/utils/cn";
 
 type PredictionType = "1X2" | "Over/Under" | "BTTS" | "Handicap";
+type MatchMode = "today" | "manual";
 
 type Fixture = {
   id: string | number;
@@ -38,6 +39,15 @@ function makeTitle(f: Fixture) {
   return `${home} vs ${away}`;
 }
 
+function tipOptionsFor(type: PredictionType) {
+  if (type === "1X2") return ["Home Win", "Draw", "Away Win"] as const;
+  if (type === "BTTS") return ["BTTS Yes", "BTTS No"] as const;
+  if (type === "Over/Under") {
+    return ["Over 1.5", "Under 1.5", "Over 2.5", "Under 2.5", "Over 3.5", "Under 3.5"] as const;
+  }
+  return [] as const;
+}
+
 export function SubmitPredictionForm({ className }: { className?: string }) {
   const supabase = useMemo(() => createClientComponentClient(), []);
 
@@ -45,9 +55,16 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
   const [isLoading, setIsLoading] = useState(true);
   const [bankroll, setBankroll] = useState<number | null>(null);
 
+  const [matchMode, setMatchMode] = useState<MatchMode>("today");
   const [matchId, setMatchId] = useState<string>("");
+  const [manualLeague, setManualLeague] = useState("");
+  const [manualHome, setManualHome] = useState("");
+  const [manualAway, setManualAway] = useState("");
+  const [manualKickoff, setManualKickoff] = useState("");
+
   const [predictionType, setPredictionType] = useState<PredictionType>("1X2");
   const [tip, setTip] = useState("");
+  const [tipIsCustom, setTipIsCustom] = useState(false);
   const [odds, setOdds] = useState("");
   const [stake, setStake] = useState("");
   const [reasoning, setReasoning] = useState("");
@@ -103,6 +120,16 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
     };
   }, [supabase]);
 
+  useEffect(() => {
+    const options = tipOptionsFor(predictionType);
+    if (!options.length) {
+      setTipIsCustom(true);
+      return;
+    }
+    setTipIsCustom(false);
+    setTip(options[0] ?? "");
+  }, [predictionType]);
+
   const oddsNumber = Number(odds);
   const oddsTooLow = Number.isFinite(oddsNumber) && oddsNumber > 0 && oddsNumber < 1.5;
 
@@ -115,9 +142,36 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
     setError(null);
 
     const trimmedTip = tip.trim();
-    if (!matchId) {
-      setError("Pick a match from today’s fixtures.");
-      return;
+    if (matchMode === "today") {
+      if (!matchId) {
+        setError("Pick a match from today’s fixtures or switch to Manual fixture.");
+        return;
+      }
+    } else {
+      const home = manualHome.trim();
+      const away = manualAway.trim();
+      if (!home || !away) {
+        setError("Enter home and away teams.");
+        return;
+      }
+      if (!manualKickoff.trim()) {
+        setError("Pick a kickoff date/time.");
+        return;
+      }
+      const kickoff = new Date(manualKickoff);
+      if (Number.isNaN(kickoff.getTime())) {
+        setError("Kickoff date/time is invalid.");
+        return;
+      }
+      const deltaMs = kickoff.getTime() - Date.now();
+      if (deltaMs <= 0) {
+        setError("Kickoff must be in the future.");
+        return;
+      }
+      if (deltaMs <= 30 * 60 * 1000) {
+        setError("Predictions lock 30 minutes before kick-off.");
+        return;
+      }
     }
     if (!trimmedTip) {
       setError("Enter your tip.");
@@ -154,16 +208,26 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
 
     setSubmitting(true);
     try {
+      const manualPayload =
+        matchMode === "manual"
+          ? {
+              matchTitle: `${manualHome.trim()} vs ${manualAway.trim()}`,
+              league: manualLeague.trim() || null,
+              matchDate: new Date(manualKickoff).toISOString(),
+            }
+          : null;
+
       const res = await fetch("/api/community-predictions", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          matchId,
+          matchId: matchMode === "today" ? matchId : null,
           predictionType,
           tip: trimmedTip,
           odds: oddsNumber,
           stake: stakeNumber,
           reasoning: reasoning.trim() || null,
+          ...manualPayload,
         }),
       });
 
@@ -176,9 +240,15 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
 
       setOk("Prediction submitted.");
       setTip("");
+      setTipIsCustom(false);
       setOdds("");
       setStake("");
       setReasoning("");
+      setManualLeague("");
+      setManualHome("");
+      setManualAway("");
+      setManualKickoff("");
+      setMatchId("");
       try {
         const r2 = await fetch("/api/bankroll", { method: "GET" });
         if (r2.ok) {
@@ -203,26 +273,96 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
       </CardHeader>
       <CardContent>
         <form onSubmit={onSubmit} className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setMatchMode("today")}
+              className={cn(
+                "rounded-xl border px-3 py-2 text-sm font-semibold",
+                matchMode === "today"
+                  ? "border-accent/40 bg-accent/10 text-accent"
+                  : "border-border bg-background/20 text-muted hover:bg-background/30",
+              )}
+            >
+              Today’s fixture
+            </button>
+            <button
+              type="button"
+              onClick={() => setMatchMode("manual")}
+              className={cn(
+                "rounded-xl border px-3 py-2 text-sm font-semibold",
+                matchMode === "manual"
+                  ? "border-accent/40 bg-accent/10 text-accent"
+                  : "border-border bg-background/20 text-muted hover:bg-background/30",
+              )}
+            >
+              Manual fixture
+            </button>
+          </div>
+
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <label className="space-y-2">
-              <div className="text-xs font-medium text-foreground">Match</div>
-              <select
-                value={matchId}
-                onChange={(e) => setMatchId(e.target.value)}
-                className="h-11 w-full rounded-xl border border-border bg-background/30 px-3 text-sm text-foreground"
-                disabled={isLoading}
-              >
-                <option value="">{isLoading ? "Loading…" : "Select today’s fixture"}</option>
-                {fixtures.map((f) => (
-                  <option key={String(f.id)} value={String(f.id)}>
-                    {makeTitle(f)} • {formatKickoff(f.match_date)}
-                  </option>
-                ))}
-              </select>
-              <div className="text-xs text-muted">
-                Match must be from today’s fixtures.
+            {matchMode === "today" ? (
+              <label className="space-y-2">
+                <div className="text-xs font-medium text-foreground">Match</div>
+                <select
+                  value={matchId}
+                  onChange={(e) => setMatchId(e.target.value)}
+                  className="h-11 w-full rounded-xl border border-border bg-background/30 px-3 text-sm text-foreground"
+                  disabled={isLoading}
+                >
+                  <option value="">{isLoading ? "Loading…" : "Select today’s fixture"}</option>
+                  {fixtures.map((f) => (
+                    <option key={String(f.id)} value={String(f.id)}>
+                      {makeTitle(f)} • {formatKickoff(f.match_date)}
+                    </option>
+                  ))}
+                </select>
+                <div className="text-xs text-muted">Uses today’s fixtures list.</div>
+              </label>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <label className="space-y-2">
+                    <div className="text-xs font-medium text-foreground">Home Team</div>
+                    <input
+                      value={manualHome}
+                      onChange={(e) => setManualHome(e.target.value)}
+                      placeholder="Home team"
+                      className="h-11 w-full rounded-xl border border-border bg-background/30 px-3 text-sm text-foreground placeholder:text-muted"
+                    />
+                  </label>
+                  <label className="space-y-2">
+                    <div className="text-xs font-medium text-foreground">Away Team</div>
+                    <input
+                      value={manualAway}
+                      onChange={(e) => setManualAway(e.target.value)}
+                      placeholder="Away team"
+                      className="h-11 w-full rounded-xl border border-border bg-background/30 px-3 text-sm text-foreground placeholder:text-muted"
+                    />
+                  </label>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <label className="space-y-2">
+                    <div className="text-xs font-medium text-foreground">League (optional)</div>
+                    <input
+                      value={manualLeague}
+                      onChange={(e) => setManualLeague(e.target.value)}
+                      placeholder="e.g. EPL"
+                      className="h-11 w-full rounded-xl border border-border bg-background/30 px-3 text-sm text-foreground placeholder:text-muted"
+                    />
+                  </label>
+                  <label className="space-y-2">
+                    <div className="text-xs font-medium text-foreground">Kickoff</div>
+                    <input
+                      value={manualKickoff}
+                      onChange={(e) => setManualKickoff(e.target.value)}
+                      type="datetime-local"
+                      className="h-11 w-full rounded-xl border border-border bg-background/30 px-3 text-sm text-foreground"
+                    />
+                  </label>
+                </div>
               </div>
-            </label>
+            )}
 
             <label className="space-y-2">
               <div className="text-xs font-medium text-foreground">Prediction Type</div>
@@ -242,12 +382,46 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <label className="space-y-2">
               <div className="text-xs font-medium text-foreground">Tip</div>
-              <input
-                value={tip}
-                onChange={(e) => setTip(e.target.value)}
-                placeholder='e.g. "Over 2.5", "Home Win", "BTTS Yes"'
-                className="h-11 w-full rounded-xl border border-border bg-background/30 px-3 text-sm text-foreground placeholder:text-muted"
-              />
+              {tipOptionsFor(predictionType).length ? (
+                <div className="space-y-2">
+                  <select
+                    value={tipIsCustom ? "__custom__" : tip}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "__custom__") {
+                        setTipIsCustom(true);
+                        setTip("");
+                      } else {
+                        setTipIsCustom(false);
+                        setTip(v);
+                      }
+                    }}
+                    className="h-11 w-full rounded-xl border border-border bg-background/30 px-3 text-sm text-foreground"
+                  >
+                    {tipOptionsFor(predictionType).map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                    <option value="__custom__">Custom…</option>
+                  </select>
+                  {tipIsCustom ? (
+                    <input
+                      value={tip}
+                      onChange={(e) => setTip(e.target.value)}
+                      placeholder='e.g. "Over 2.5", "Home Win", "BTTS Yes"'
+                      className="h-11 w-full rounded-xl border border-border bg-background/30 px-3 text-sm text-foreground placeholder:text-muted"
+                    />
+                  ) : null}
+                </div>
+              ) : (
+                <input
+                  value={tip}
+                  onChange={(e) => setTip(e.target.value)}
+                  placeholder='e.g. "Over 2.5", "Home Win", "BTTS Yes"'
+                  className="h-11 w-full rounded-xl border border-border bg-background/30 px-3 text-sm text-foreground placeholder:text-muted"
+                />
+              )}
             </label>
 
             <label className="space-y-2">

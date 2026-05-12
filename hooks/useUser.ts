@@ -3,8 +3,6 @@
 import { useAuth, useUser as useClerkUser } from "@clerk/nextjs";
 import { useEffect, useMemo, useState } from "react";
 
-import { createClientComponentClient } from "@/lib/supabase-client";
-
 type SubscriptionTier = "free" | "basic" | "pro" | "elite";
 
 type UserSubscription = {
@@ -37,7 +35,7 @@ function subscriptionFromPublicMetadata(publicMetadata: unknown): UserSubscripti
 
 export function useUser() {
   const { user, isLoaded: isUserLoaded } = useClerkUser();
-  const { userId, getToken, isLoaded: isAuthLoaded } = useAuth();
+  const { userId, isLoaded: isAuthLoaded } = useAuth();
 
   const [userSubscription, setUserSubscription] =
     useState<UserSubscription | null>(null);
@@ -56,27 +54,24 @@ export function useUser() {
 
       setIsSubscriptionLoading(true);
       try {
-        const accessToken = await getToken({ template: "supabase" }).catch(
+        const res = await fetch("/api/subscriptions/status", { method: "GET", cache: "no-store" }).catch(
           () => null,
         );
-        const supabase = createClientComponentClient({
-          accessToken: accessToken ?? undefined,
-        });
-
-        const { data, error } = await supabase
-          .from("user_subscriptions")
-          .select("tier, expires_at")
-          .eq("clerk_user_id", userId)
-          .maybeSingle<UserSubscription>();
+        const json = (await res?.json().catch(() => null)) as
+          | { tier?: string | null; expires_at?: string | null; error?: string }
+          | null;
 
         if (cancelled) return;
-        if (error) {
+        if (!res || !res.ok || !json) {
           const fallback = subscriptionFromPublicMetadata(user?.publicMetadata);
           setUserSubscription(fallback);
           return;
         }
 
-        setUserSubscription(data ?? null);
+        setUserSubscription({
+          tier: normalizeTier(json.tier),
+          expires_at: typeof json.expires_at === "string" ? json.expires_at : null,
+        });
       } finally {
         if (!cancelled) setIsSubscriptionLoading(false);
       }
@@ -84,10 +79,21 @@ export function useUser() {
 
     void load();
 
+    const interval = setInterval(() => {
+      void load();
+    }, 30_000);
+
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") void load();
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     return () => {
       cancelled = true;
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [getToken, isAuthLoaded, isUserLoaded, userId, user?.publicMetadata]);
+  }, [isAuthLoaded, isUserLoaded, userId, user?.publicMetadata]);
 
   const tier = userSubscription?.tier ?? "free";
 

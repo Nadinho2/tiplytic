@@ -85,7 +85,10 @@ async function lockPredictionsForMatch(
 }
 
 type PostBody = {
-  matchId: string;
+  matchId?: string | null;
+  matchTitle?: string | null;
+  league?: string | null;
+  matchDate?: string | null;
   predictionType: "1X2" | "Over/Under" | "BTTS" | "Handicap";
   tip: string;
   odds: number;
@@ -98,14 +101,22 @@ export async function POST(request: Request) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = (await request.json()) as PostBody;
-  const matchId = String(body.matchId || "").trim();
+  const matchId = String(body.matchId ?? "").trim() || null;
+  const manualTitle = String(body.matchTitle ?? "").trim() || null;
+  const manualLeague = String(body.league ?? "").trim() || null;
+  const manualMatchDate = String(body.matchDate ?? "").trim() || null;
   const tip = String(body.tip || "").trim();
   const predictionType = String(body.predictionType || "").trim();
   const odds = Number(body.odds);
   const stake = body.stake == null ? null : Math.floor(Number(body.stake));
   const reasoning = body.reasoning ? String(body.reasoning).slice(0, 200) : null;
 
-  if (!matchId) return NextResponse.json({ error: "Missing matchId" }, { status: 400 });
+  if (!matchId && !manualTitle) {
+    return NextResponse.json({ error: "Missing matchId or matchTitle" }, { status: 400 });
+  }
+  if (!matchId && !manualMatchDate) {
+    return NextResponse.json({ error: "Missing matchDate" }, { status: 400 });
+  }
   if (!tip) return NextResponse.json({ error: "Missing tip" }, { status: 400 });
   if (
     predictionType !== "1X2" &&
@@ -127,46 +138,62 @@ export async function POST(request: Request) {
 
   const supabase = createServiceClient();
 
-  const { data: fixture, error: fixtureError } = await supabase
-    .from("predictions")
-    .select("id,league,home_team,away_team,match_date")
-    .eq("id", matchId)
-    .maybeSingle<{
-      id: string | number;
-      league: string | null;
-      home_team: string | null;
-      away_team: string | null;
-      match_date: string | null;
-    }>();
+  let matchTitle = manualTitle;
+  let league = manualLeague;
+  let matchDate = manualMatchDate;
 
-  if (fixtureError || !fixture) {
-    return NextResponse.json({ error: "Match not found" }, { status: 404 });
+  if (matchId) {
+    const { data: fixture, error: fixtureError } = await supabase
+      .from("predictions")
+      .select("id,league,home_team,away_team,match_date")
+      .eq("id", matchId)
+      .maybeSingle<{
+        id: string | number;
+        league: string | null;
+        home_team: string | null;
+        away_team: string | null;
+        match_date: string | null;
+      }>();
+
+    if (fixtureError || !fixture) {
+      return NextResponse.json({ error: "Match not found" }, { status: 404 });
+    }
+
+    matchTitle = makeMatchTitle(fixture.home_team, fixture.away_team);
+    league = fixture.league ?? null;
+    matchDate = fixture.match_date ?? null;
   }
 
-  const matchDate = fixture.match_date;
+  if (!matchTitle) {
+    return NextResponse.json({ error: "Match title is required" }, { status: 400 });
+  }
+
   if (!matchDate) {
     return NextResponse.json({ error: "Match kickoff time missing" }, { status: 400 });
   }
 
   const kickoff = new Date(matchDate);
-  if (!kickoff || Number.isNaN(kickoff.getTime())) {
+  if (Number.isNaN(kickoff.getTime())) {
     return NextResponse.json({ error: "Match kickoff time missing" }, { status: 400 });
   }
 
   const now = new Date();
   const todayStart = startOfUtcDayIso(now);
   const todayEnd = endOfUtcDayIso(now);
-  if (!(matchDate >= todayStart && matchDate <= todayEnd)) {
-    return NextResponse.json({ error: "Match must be in today’s fixtures" }, { status: 400 });
-  }
 
   const deltaMs = kickoff.getTime() - now.getTime();
   if (deltaMs <= 0) {
     return NextResponse.json({ error: "Match has already kicked off" }, { status: 400 });
   }
   if (deltaMs <= 30 * 60 * 1000) {
-    await lockPredictionsForMatch(supabase, matchId);
+    if (matchId) await lockPredictionsForMatch(supabase, matchId);
     return NextResponse.json({ error: "Predictions are locked for this match" }, { status: 400 });
+  }
+
+  if (matchId) {
+    if (!(matchDate >= todayStart && matchDate <= todayEnd)) {
+      return NextResponse.json({ error: "Match must be in today’s fixtures" }, { status: 400 });
+    }
   }
 
   const { count: todayCount } = await supabase
@@ -180,19 +207,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Daily limit reached (10 predictions)" }, { status: 429 });
   }
 
-  const matchTitle = makeMatchTitle(fixture.home_team, fixture.away_team);
-  const league = fixture.league ?? null;
-
   try {
-    const { data: existingByMatchId } = await supabase
-      .from("community_predictions")
-      .select("id,locked_at")
-      .eq("user_id", userId)
-      .eq("match_id", matchId)
-      .maybeSingle<{ id: string | number; locked_at: string | null }>();
+    if (matchId) {
+      const { data: existingByMatchId } = await supabase
+        .from("community_predictions")
+        .select("id,locked_at")
+        .eq("user_id", userId)
+        .eq("match_id", matchId)
+        .maybeSingle<{ id: string | number; locked_at: string | null }>();
 
-    if (existingByMatchId?.id) {
-      return NextResponse.json({ error: "You already predicted this match" }, { status: 409 });
+      if (existingByMatchId?.id) {
+        return NextResponse.json({ error: "You already predicted this match" }, { status: 409 });
+      }
+    } else {
+      const { data: existingByTitle } = await supabase
+        .from("community_predictions")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("match_title", matchTitle)
+        .eq("match_date", matchDate)
+        .maybeSingle<{ id: string | number }>();
+
+      if (existingByTitle?.id) {
+        return NextResponse.json({ error: "You already predicted this match" }, { status: 409 });
+      }
     }
   } catch {
     const { data: existingByMatch } = await supabase
@@ -210,23 +248,26 @@ export async function POST(request: Request) {
   let inserted: InsertedRow | null = null;
 
   try {
+    const insertRow: Record<string, unknown> = {
+      user_id: userId,
+      created_at: new Date().toISOString(),
+      league,
+      prediction_type: predictionType,
+      tip,
+      odds,
+      stake: stake ?? null,
+      reasoning,
+      result: "pending",
+      locked_at: null,
+      match: matchTitle,
+      match_title: matchTitle,
+      match_date: matchDate,
+    };
+    if (matchId) insertRow.match_id = matchId;
+
     const { data, error } = await supabase
       .from("community_predictions")
-      .insert({
-        user_id: userId,
-        created_at: new Date().toISOString(),
-        match_id: matchId,
-        match_title: matchTitle,
-        match_date: matchDate,
-        league,
-        prediction_type: predictionType,
-        tip,
-        odds,
-        stake: stake ?? null,
-        reasoning,
-        result: "pending",
-        locked_at: null,
-      })
+      .insert(insertRow as never)
       .select("*")
       .maybeSingle();
 
