@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+:root {
+  --background: #080c14;
+  --foreground: #e2e8f0;
+  --muted: #94a3b8;
+  --muted-2: #475569;
+  --card: #0d1320;
+  --card-foreground: #e2e8f0;
+  --input: #111827;
+  --border: rgba(255, 255, 255, 0.07);
+  --accent: #3b82f6;
+  --accent-soft: rgba(59, 130, 246, 0.16);
+  --success: #10b981;
+  --danger: #ef4444;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --font-sans: var(--font-dm-sans);
+}
+
+body {
+  font-family: var(--font-sans);
+}
+
+.bg-grid-texture {
+  background-image: linear-gradient(
+      rgba(255, 255, 255, 0.05) 1px,
+      transparent 1px
+    ),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 48px 48px;
+  background-position: -1px -1px;
+}
+
+@keyframes marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes streakShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes badgePop {
+  0% {
+    transform: scale(0.92);
+  }
+  60% {
+    transform: scale(1.04);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes toastSlide {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.marquee {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.marquee__track {
+  display: inline-flex;
+  min-width: 200%;
+  animation: marquee 20s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee__track {
+    animation: none;
+  }
+}
