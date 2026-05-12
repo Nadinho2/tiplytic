@@ -78,6 +78,7 @@ export default async function Page() {
   const { userId } = await auth();
   const stats = await getHomeStats();
   const primaryHref = userId ? "/dashboard" : "/sign-up";
+  const primaryLabel = userId ? "Dashboard" : "Get Started Free";
   return (
     <div className="bg-background">
       <section className="relative overflow-hidden">
@@ -94,7 +95,7 @@ export default async function Page() {
             </p>
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <ButtonLink href={primaryHref} variant="primary">
-                Get Started Free
+                {primaryLabel}
               </ButtonLink>
               <ButtonLink href="/predictions" variant="secondary">
                 View Today&apos;s Picks

@@ -28,7 +28,9 @@ export function Navbar() {
   const { user, userSubscription, isLoading } = useUser();
 
   const tierLabel = isLoading ? "…" : getTierLabel(userSubscription?.tier);
-  const navItems = user ? [...nav, { href: "/dashboard/community", label: "Community" }] : nav;
+  const navItems = user
+    ? [...nav, { href: "/dashboard", label: "Dashboard" }, { href: "/dashboard/community", label: "Community" }]
+    : nav;
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/70 backdrop-blur">
@@ -78,9 +80,12 @@ export function Navbar() {
               </button>
 
               <div className="hidden items-center gap-2 md:flex">
-                <span className="rounded-full border border-border bg-card/70 px-3 py-1 text-xs font-medium text-muted">
+                <Link
+                  href="/dashboard"
+                  className="rounded-full border border-border bg-card/70 px-3 py-1 text-xs font-medium text-muted hover:border-accent/35 hover:text-foreground"
+                >
                   {tierLabel}
-                </span>
+                </Link>
               </div>
 
               <UserButton
