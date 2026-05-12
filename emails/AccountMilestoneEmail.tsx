@@ -21,7 +21,7 @@ export default function AccountMilestoneEmail({ username = 'User', milestone = '
           <Section style={theme.content}>
             <Heading style={{...theme.title, textAlign: 'center'}}>Milestone Reached! 🚀</Heading>
             <Text style={{...theme.text, textAlign: 'center'}}>
-              Massive respect, {username}. You've just hit a major milestone on the platform.
+              Massive respect, {username}. You&apos;ve just hit a major milestone on the platform.
             </Text>
             
             <Section style={theme.statBox}>

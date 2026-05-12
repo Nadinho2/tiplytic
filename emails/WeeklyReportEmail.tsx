@@ -165,7 +165,7 @@ export default function WeeklyReportEmail({
                 See Full Stats
               </Button>
               <Button style={theme.button} href={todaysPredictionsUrl}>
-                Today's Predictions
+                Today&apos;s Predictions
               </Button>
             </Section>
 
@@ -181,4 +181,3 @@ export default function WeeklyReportEmail({
     </Html>
   );
 }
-

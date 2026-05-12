@@ -67,6 +67,16 @@ type AdminPredictionsResponse = {
   error?: string;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function getErrorMessage(value: unknown) {
+  if (!isRecord(value)) return null;
+  const err = value.error;
+  return typeof err === "string" && err.trim() ? err : null;
+}
+
 function normalizeTab(value: string) {
   if (value === "leaderboard") return "leaderboard";
   if (value === "challenge") return "challenge";
@@ -115,7 +125,7 @@ export function CommunityClient({ initialTab }: { initialTab: string }) {
       const json = (await res?.json().catch(() => null)) as LeaderboardResponse | { error?: string } | null;
       if (cancelled) return;
       if (!res || !res.ok || !json || "error" in json) {
-        toast.error((json as any)?.error || "Failed to load leaderboard");
+        toast.error(getErrorMessage(json) || "Failed to load leaderboard");
         setLbData(null);
         setLbLoading(false);
         return;
@@ -138,7 +148,7 @@ export function CommunityClient({ initialTab }: { initialTab: string }) {
       const json = (await res?.json().catch(() => null)) as ChallengeResponse | { error?: string } | null;
       if (cancelled) return;
       if (!res || !res.ok || !json) {
-        toast.error((json as any)?.error || "Failed to load daily challenge");
+        toast.error(getErrorMessage(json) || "Failed to load daily challenge");
         setChallenge(null);
         setChallengeLoading(false);
         return;

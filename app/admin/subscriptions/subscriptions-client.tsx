@@ -56,6 +56,37 @@ type RevenueResponse = {
   error?: string;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isSubscriptionsResponse(value: unknown): value is SubscriptionsResponse {
+  return isRecord(value) && value.tab === "subscriptions" && Array.isArray(value.subscriptions);
+}
+
+function isRevenueResponse(value: unknown): value is RevenueResponse {
+  return isRecord(value) && value.tab === "revenue" && Array.isArray(value.payments);
+}
+
+function getErrorMessage(value: unknown) {
+  if (!isRecord(value)) return null;
+  const err = value.error;
+  return typeof err === "string" && err.trim() ? err : null;
+}
+
+function hasTableMissing(value: unknown) {
+  if (!isRecord(value)) return false;
+  return value.tableMissing === true;
+}
+
+function isTierFilter(value: string): value is "all" | "free" | "basic" | "pro" | "elite" {
+  return value === "all" || value === "free" || value === "basic" || value === "pro" || value === "elite";
+}
+
+function isPaymentStatusFilter(value: string): value is "all" | "success" | "failed" | "pending" {
+  return value === "all" || value === "success" || value === "failed" || value === "pending";
+}
+
 function formatMoney(value: number) {
   return new Intl.NumberFormat(undefined, {
     style: "currency",
@@ -107,20 +138,20 @@ export function SubscriptionsClient({ initialTab }: { initialTab: string }) {
       }
 
       const res = await fetch(`/api/admin/subscriptions?${qs.toString()}`, { method: "GET" }).catch(() => null);
-      const json = (await res?.json().catch(() => null)) as (SubscriptionsResponse | RevenueResponse | { error?: string }) | null;
+      const json = (await res?.json().catch(() => null)) as unknown;
       if (cancelled) return;
 
-      if (!res || !res.ok || !json || (json as { error?: string }).error && !(json as any).tab) {
-        toast.error((json as any)?.error || "Failed to load");
+      if (!res || !res.ok || !json || (!isSubscriptionsResponse(json) && !isRevenueResponse(json))) {
+        toast.error(getErrorMessage(json) || "Failed to load");
         setLoading(false);
         return;
       }
 
-      if ((json as any).tab === "subscriptions") setSubsData(json as SubscriptionsResponse);
-      if ((json as any).tab === "revenue") setRevData(json as RevenueResponse);
+      if (isSubscriptionsResponse(json)) setSubsData(json);
+      if (isRevenueResponse(json)) setRevData(json);
 
-      if ((json as any).tableMissing) {
-        toast.error((json as any).error || "Required table is missing in Supabase");
+      if (hasTableMissing(json)) {
+        toast.error(getErrorMessage(json) || "Required table is missing in Supabase");
       }
 
       setLoading(false);
@@ -182,7 +213,11 @@ export function SubscriptionsClient({ initialTab }: { initialTab: string }) {
               <div className="flex flex-wrap gap-2">
                 <select
                   value={tier}
-                  onChange={(e) => { setTier(e.target.value as any); setPage(0); }}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    if (isTierFilter(next)) setTier(next);
+                    setPage(0);
+                  }}
                   className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none"
                 >
                   <option value="all">All tiers</option>
@@ -283,7 +318,11 @@ export function SubscriptionsClient({ initialTab }: { initialTab: string }) {
               <div className="flex flex-wrap gap-2">
                 <select
                   value={payStatus}
-                  onChange={(e) => { setPayStatus(e.target.value as any); setPage(0); }}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    if (isPaymentStatusFilter(next)) setPayStatus(next);
+                    setPage(0);
+                  }}
                   disabled={disableActions}
                   className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none disabled:opacity-60"
                 >

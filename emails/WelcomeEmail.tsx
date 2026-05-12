@@ -19,10 +19,10 @@ export default function WelcomeEmail({ username = 'User' }: WelcomeEmailProps) {
           <Section style={theme.content}>
             <Heading style={theme.title}>Welcome to the club, {username}!</Heading>
             <Text style={theme.text}>
-              We're thrilled to have you on board. TipLytic is your ultimate platform for tracking sports predictions, climbing the leaderboards, and building winning accumulators.
+              We&apos;re thrilled to have you on board. TipLytic is your ultimate platform for tracking sports predictions, climbing the leaderboards, and building winning accumulators.
             </Text>
             <Text style={theme.text}>
-              Your virtual bankroll has been loaded. Start submitting your picks, earn badges, and prove you're the best tipster in the community.
+              Your virtual bankroll has been loaded. Start submitting your picks, earn badges, and prove you&apos;re the best tipster in the community.
             </Text>
             <Section style={theme.buttonContainer}>
               <Button style={theme.button} href="https://tiplytic.com/dashboard">

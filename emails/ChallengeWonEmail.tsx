@@ -30,7 +30,7 @@ export default function ChallengeWonEmail({ username = 'User', challengeName = '
             </Section>
 
             <Text style={theme.text}>
-              Your points have been added to the Weekly Leaderboard. You're one step closer to becoming the Weekly Champion. Keep the streak going!
+              Your points have been added to the Weekly Leaderboard. You&apos;re one step closer to becoming the Weekly Champion. Keep the streak going!
             </Text>
             <Section style={theme.buttonContainer}>
               <Button style={theme.button} href="https://tiplytic.com/dashboard/challenges">

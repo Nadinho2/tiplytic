@@ -29,7 +29,7 @@ export default function BankrollWarningEmail({ username = 'User', currentBalance
             </Section>
 
             <Text style={theme.text}>
-              Don't worry! You can still submit predictions to rebuild your stack, but you'll need to be careful with your stakes. Focus on high-confidence singles to get back in the green.
+              Don&apos;t worry! You can still submit predictions to rebuild your stack, but you&apos;ll need to be careful with your stakes. Focus on high-confidence singles to get back in the green.
             </Text>
             <Section style={theme.buttonContainer}>
               <Button style={theme.button} href="https://tiplytic.com/dashboard">

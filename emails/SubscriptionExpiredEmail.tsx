@@ -22,10 +22,10 @@ export default function SubscriptionExpiredEmail({ username = 'User' }: Subscrip
               Hi {username},
             </Text>
             <Text style={theme.text}>
-              Your TipLytic Pro subscription has officially expired. You've been downgraded to the free tier, which means you've lost access to advanced analytics, unlimited accumulator building, and the VIP community sections.
+              Your TipLytic Pro subscription has officially expired. You&apos;ve been downgraded to the free tier, which means you&apos;ve lost access to advanced analytics, unlimited accumulator building, and the VIP community sections.
             </Text>
             <Text style={theme.text}>
-              Don't lose your competitive edge. Reactivate your subscription today to get right back into the action.
+              Don&apos;t lose your competitive edge. Reactivate your subscription today to get right back into the action.
             </Text>
             <Section style={theme.buttonContainer}>
               <Button style={theme.button} href="https://tiplytic.com/dashboard/billing">

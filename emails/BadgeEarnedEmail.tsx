@@ -21,7 +21,7 @@ export default function BadgeEarnedEmail({ username = 'User', badgeName = 'Sharp
           <Section style={theme.content}>
             <Heading style={{...theme.title, textAlign: 'center'}}>New Badge Unlocked! 🏅</Heading>
             <Text style={{...theme.text, textAlign: 'center'}}>
-              Incredible work, {username}! You've just earned a new badge on TipLytic.
+              Incredible work, {username}! You&apos;ve just earned a new badge on TipLytic.
             </Text>
             
             <Section style={theme.statBox}>
