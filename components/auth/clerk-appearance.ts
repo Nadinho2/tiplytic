@@ -4,9 +4,15 @@ export const clerkAuthAppearance = {
     colorBackground: "#080C14",
     colorText: "#f4f4f5",
     colorTextSecondary: "#a1a1aa",
+    colorTextOnPrimaryBackground: "#ffffff",
+    colorInputBackground: "rgba(255,255,255,0.02)",
+    colorInputText: "#f4f4f5",
+    colorNeutral: "rgba(255,255,255,0.12)",
     borderRadius: "16px",
   },
   elements: {
+    rootBox: "text-foreground",
+    modalContent: "border border-white/10 bg-white/[0.03] shadow-none",
     card: "border border-white/10 bg-white/[0.03] shadow-none",
     headerTitle: "text-foreground",
     headerSubtitle: "text-muted",
@@ -24,5 +30,17 @@ export const clerkAuthAppearance = {
     formFieldErrorText: "text-red-400",
     identityPreviewText: "text-muted",
     identityPreviewEditButton: "text-[#3B82F6] hover:text-[#3B82F6]/90",
+    userButtonPopoverCard: "border border-white/10 bg-[#0D1320] text-foreground shadow-none",
+    userButtonPopoverActionButton:
+      "text-foreground hover:bg-white/[0.04] hover:text-foreground",
+    userButtonPopoverActionButtonText: "text-foreground",
+    userButtonPopoverFooter: "border-t border-white/10",
+    navbar: "border border-white/10 bg-white/[0.02] text-foreground",
+    navbarButton: "text-foreground hover:bg-white/[0.04]",
+    navbarButtonText: "text-foreground",
+    profileSectionTitleText: "text-foreground",
+    profileSectionContent: "text-foreground",
+    profileSectionPrimaryButton:
+      "bg-[#3B82F6] text-white hover:shadow-[0_0_0_1px_rgba(59,130,246,0.6),0_0_28px_rgba(59,130,246,0.18)]",
   },
 } as const;

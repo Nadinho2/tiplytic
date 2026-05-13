@@ -31,6 +31,69 @@ body {
   font-family: var(--font-sans);
 }
 
+select {
+  background-color: color-mix(in oklab, var(--background) 70%, transparent);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+
+select option {
+  background-color: #ffffff;
+  color: #0b1220;
+}
+
+.cl-rootBox,
+.cl-card,
+.cl-modalContent,
+.cl-userButtonPopoverCard,
+.cl-profileSection,
+.cl-navbar {
+  color: var(--foreground);
+}
+
+.cl-card,
+.cl-modalContent,
+.cl-userButtonPopoverCard {
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.cl-headerTitle,
+.cl-formFieldLabel,
+.cl-profileSectionTitleText,
+.cl-navbarButtonText,
+.cl-userButtonPopoverActionButtonText,
+.cl-userButtonPopoverActionButton {
+  color: var(--foreground);
+}
+
+.cl-headerSubtitle,
+.cl-footerActionText,
+.cl-formFieldHintText,
+.cl-formFieldInfoText,
+.cl-identityPreviewText,
+.cl-accordionContent {
+  color: var(--muted);
+}
+
+.cl-formFieldInput {
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--foreground);
+}
+
+.cl-formButtonPrimary {
+  background-color: var(--accent);
+  color: #ffffff;
+}
+
+.cl-footerActionLink,
+.cl-identityPreviewEditButton,
+.cl-userButtonPopoverActionButton:hover,
+.cl-navbarButton:hover {
+  color: var(--accent);
+}
+
 .bg-grid-texture {
   background-image: linear-gradient(
       rgba(255, 255, 255, 0.05) 1px,
