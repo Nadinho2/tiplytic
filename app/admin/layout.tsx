@@ -22,6 +22,7 @@ const NAV: NavSection[] = [
       { label: "All Predictions", href: "/admin/predictions" },
       { label: "Add Prediction", href: "/admin/predictions/new" },
       { label: "Admin Pick", href: "/admin/admin-pick" },
+      { label: "Acca Builder", href: "/admin/accumulator" },
       { label: "N8N Logs", href: "/admin/n8n-logs" },
     ],
   },
@@ -208,4 +209,3 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     </div>
   );
 }
-

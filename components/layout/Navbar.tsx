@@ -29,7 +29,12 @@ export function Navbar() {
 
   const tierLabel = isLoading ? "…" : getTierLabel(userSubscription?.tier);
   const navItems = user
-    ? [...nav, { href: "/dashboard", label: "Dashboard" }, { href: "/dashboard/community", label: "Community" }]
+    ? [
+        ...nav,
+        { href: "/dashboard", label: "Dashboard" },
+        { href: "/dashboard/accumulator", label: "Acca Builder" },
+        { href: "/dashboard/community", label: "Community" },
+      ]
     : nav;
 
   return (

@@ -181,9 +181,14 @@ export default async function Page() {
             <div className="text-sm text-muted">
               Want to share your picks and climb the leaderboard?
             </div>
-            <ButtonLink href="/dashboard/community" variant="primary" size="sm">
-              Submit a prediction
-            </ButtonLink>
+            <div className="flex flex-wrap gap-2">
+              <ButtonLink href="/dashboard/community" variant="primary" size="sm">
+                Submit a prediction
+              </ButtonLink>
+              <ButtonLink href="/dashboard/accumulator" variant="secondary" size="sm">
+                Acca builder
+              </ButtonLink>
+            </div>
           </div>
           {typeof trialEndsInDays === "number" ? (
             <div className="mb-4 rounded-2xl border border-[#3B82F6]/25 bg-[#3B82F6]/10 p-4 text-sm text-[#3B82F6]">
