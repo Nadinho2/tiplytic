@@ -94,6 +94,8 @@ type PostBody = {
   odds: number;
   stake?: number | null;
   reasoning?: string | null;
+  odds_verified?: boolean;
+  odds_source?: string;
 };
 
 export async function POST(request: Request) {
@@ -110,6 +112,8 @@ export async function POST(request: Request) {
   const odds = Number(body.odds);
   const stake = body.stake == null ? null : Math.floor(Number(body.stake));
   const reasoning = body.reasoning ? String(body.reasoning).slice(0, 200) : null;
+  const oddsVerified = Boolean(body.odds_verified);
+  const oddsSource = body.odds_source ? String(body.odds_source) : "manual";
 
   if (!matchId && !manualTitle) {
     return NextResponse.json({ error: "Missing matchId or matchTitle" }, { status: 400 });
@@ -262,6 +266,8 @@ export async function POST(request: Request) {
       match: matchTitle,
       match_title: matchTitle,
       match_date: matchDate,
+      odds_verified: oddsVerified,
+      odds_source: oddsSource,
     };
     if (matchId) insertRow.match_id = matchId;
 

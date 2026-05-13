@@ -24,6 +24,7 @@ type Row = {
   result?: string | null;
   source?: string | null;
   created_at?: string | null;
+  odds_source?: string | null;
 };
 
 type ApiResponse = {
@@ -194,6 +195,48 @@ export function PredictionsClient() {
     router.refresh();
   }
 
+  async function fetchOddsForRow(predictionId: string) {
+    toast.info("Fetching odds…");
+    const res = await fetch(`/api/odds?match_id=${encodeURIComponent(predictionId)}`).catch(() => null);
+    const json = (await res?.json().catch(() => null)) as { success?: boolean; available?: boolean } | null;
+    if (!res || !json?.success) {
+      toast.error("Failed to fetch odds");
+      return;
+    }
+    if (json.available) {
+      toast.success("Odds fetched & cached");
+    } else {
+      toast.warning("Odds not available for this match");
+    }
+    router.refresh();
+    router.replace(`/admin/predictions?${sp.toString()}`);
+  }
+
+  const [bulkOddsLoading, setBulkOddsLoading] = useState(false);
+  async function bulkFetchOdds() {
+    const pendingIds = data.rows.filter((r) => !r.odds_source || r.odds_source === "manual").map((r) => String(r.id));
+    if (!pendingIds.length) {
+      toast.info("All matches on this page already have odds");
+      return;
+    }
+    const ok = window.confirm(`Fetch odds for ${pendingIds.length} matches?`);
+    if (!ok) return;
+    setBulkOddsLoading(true);
+    let fetched = 0;
+    for (const id of pendingIds) {
+      try {
+        const res = await fetch(`/api/odds?match_id=${encodeURIComponent(id)}`);
+        const json = (await res.json()) as { available?: boolean };
+        if (json.available) fetched++;
+      } catch {}
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    setBulkOddsLoading(false);
+    toast.success(`Odds fetched for ${fetched}/${pendingIds.length} matches`);
+    router.refresh();
+    router.replace(`/admin/predictions?${sp.toString()}`);
+  }
+
   const totalPages = Math.max(1, Math.ceil((data.total ?? 0) / (data.pageSize ?? 25)));
 
   return (
@@ -301,6 +344,14 @@ export function PredictionsClient() {
             >
               Bulk Delete
             </button>
+            <button
+              type="button"
+              onClick={() => void bulkFetchOdds()}
+              disabled={bulkOddsLoading}
+              className="rounded-xl border border-[#8B5CF6]/25 bg-[#8B5CF6]/10 px-3 py-2 text-xs font-semibold text-[#8B5CF6] disabled:opacity-40"
+            >
+              {bulkOddsLoading ? "Fetching…" : "⚡ Fetch Odds All"}
+            </button>
 
             <div className="ml-auto text-xs text-muted">
               {data.total.toLocaleString()} total
@@ -328,7 +379,7 @@ export function PredictionsClient() {
               <div className="col-span-1">League</div>
               <div className="col-span-2">Tip</div>
               <div className="col-span-1 text-right">Odds</div>
-              <div className="col-span-1">Tier</div>
+              <div className="col-span-1">Verified</div>
               <div className="col-span-1">Admin</div>
               <div className="col-span-1">Result</div>
               <div className="col-span-1 text-right">Actions</div>
@@ -363,7 +414,17 @@ export function PredictionsClient() {
                       </div>
                       <div className="col-span-1 text-right text-muted">{Number(r.odds ?? 0).toFixed(2)}</div>
                       <div className="col-span-1">
-                        <Badge className="bg-white/5 text-white/80">{String(r.tier_required ?? "free").toUpperCase()}</Badge>
+                        {r.odds_source && r.odds_source !== "manual" ? (
+                          <span className="inline-flex items-center rounded-full border border-[#10B981]/25 bg-[#10B981]/10 px-2 py-0.5 text-[10px] font-semibold text-[#10B981]">✓</span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void fetchOddsForRow(id)}
+                            className="inline-flex items-center rounded-full border border-[#F59E0B]/25 bg-[#F59E0B]/10 px-2 py-0.5 text-[10px] font-semibold text-[#F59E0B] hover:bg-[#F59E0B]/20"
+                          >
+                            Fetch
+                          </button>
+                        )}
                       </div>
                       <div className="col-span-1">
                         <button

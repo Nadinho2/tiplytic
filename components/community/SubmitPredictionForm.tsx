@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -16,6 +16,33 @@ type Fixture = {
   home_team?: string | null;
   away_team?: string | null;
   match_date?: string | null;
+};
+
+type BookmakerRow = {
+  name: string;
+  home: number | null;
+  draw: number | null;
+  away: number | null;
+  over25: number | null;
+  under25: number | null;
+};
+
+type OddsResponse = {
+  success?: boolean;
+  available?: boolean;
+  cached?: boolean;
+  home_odds?: number | null;
+  draw_odds?: number | null;
+  away_odds?: number | null;
+  over25_odds?: number | null;
+  under25_odds?: number | null;
+  btts_yes_odds?: number | null;
+  btts_no_odds?: number | null;
+  best_odds_by_tip?: Record<string, number>;
+  bookmakers?: BookmakerRow[];
+  fetched_at?: string;
+  message?: string;
+  manual_input_allowed?: boolean;
 };
 
 function startOfUtcDay(d: Date) {
@@ -48,6 +75,34 @@ function tipOptionsFor(type: PredictionType) {
   return [] as const;
 }
 
+function getOddsForTip(tip: string, oddsData: OddsResponse | null): number | null {
+  if (!oddsData?.best_odds_by_tip) return null;
+  return oddsData.best_odds_by_tip[tip] ?? null;
+}
+
+function getBookmakerOddsForTip(tip: string, bookmakers: BookmakerRow[]): { name: string; odds: number }[] {
+  const results: { name: string; odds: number }[] = [];
+  for (const bm of bookmakers) {
+    let val: number | null = null;
+    if (tip === "Home Win") val = bm.home;
+    else if (tip === "Draw") val = bm.draw;
+    else if (tip === "Away Win") val = bm.away;
+    else if (tip === "Over 2.5") val = bm.over25;
+    else if (tip === "Under 2.5") val = bm.under25;
+    if (val != null) results.push({ name: bm.name, odds: val });
+  }
+  return results.sort((a, b) => b.odds - a.odds);
+}
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  return `${hrs}h ${mins % 60}m ago`;
+}
+
 export function SubmitPredictionForm({ className }: { className?: string }) {
   const supabase = useMemo(() => createClientComponentClient(), []);
 
@@ -69,10 +124,16 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
   const [stake, setStake] = useState("");
   const [reasoning, setReasoning] = useState("");
 
+  // Odds state
+  const [oddsData, setOddsData] = useState<OddsResponse | null>(null);
+  const [oddsFetching, setOddsFetching] = useState(false);
+  const [oddsVerified, setOddsVerified] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Load fixtures and bankroll
   useEffect(() => {
     let cancelled = false;
 
@@ -120,6 +181,7 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
     };
   }, [supabase]);
 
+  // Set default tip when prediction type changes
   useEffect(() => {
     const options = tipOptionsFor(predictionType);
     if (!options.length) {
@@ -130,11 +192,62 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
     setTip(options[0] ?? "");
   }, [predictionType]);
 
+  // Fetch odds when match is selected
+  const fetchOdds = useCallback(async (id: string) => {
+    if (!id) {
+      setOddsData(null);
+      setOddsVerified(false);
+      return;
+    }
+    setOddsFetching(true);
+    try {
+      const res = await fetch(`/api/odds?match_id=${encodeURIComponent(id)}`);
+      const json = (await res.json()) as OddsResponse;
+      setOddsData(json);
+      setOddsVerified(json.available === true);
+    } catch {
+      setOddsData(null);
+      setOddsVerified(false);
+    } finally {
+      setOddsFetching(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (matchMode === "today" && matchId) {
+      void fetchOdds(matchId);
+    } else {
+      setOddsData(null);
+      setOddsVerified(false);
+    }
+  }, [matchId, matchMode, fetchOdds]);
+
+  // Auto-update odds when tip changes and we have verified odds
+  useEffect(() => {
+    if (!oddsVerified || !oddsData) return;
+    const matched = getOddsForTip(tip, oddsData);
+    if (matched != null) {
+      setOdds(matched.toFixed(2));
+    }
+  }, [tip, oddsData, oddsVerified]);
+
+  // Auto-refresh stale odds (> 3 hours)
+  useEffect(() => {
+    if (!oddsData?.fetched_at || !matchId || matchMode !== "today") return;
+    const age = Date.now() - new Date(oddsData.fetched_at).getTime();
+    if (age > 3 * 60 * 60 * 1000) {
+      void fetchOdds(matchId);
+    }
+  }, [oddsData?.fetched_at, matchId, matchMode, fetchOdds]);
+
   const oddsNumber = Number(odds);
   const oddsTooLow = Number.isFinite(oddsNumber) && oddsNumber > 0 && oddsNumber < 1.5;
+  const maxStake = bankroll != null ? Math.max(0, Math.floor(bankroll * 0.2)) : null;
 
-  const maxStake =
-    bankroll != null ? Math.max(0, Math.floor(bankroll * 0.2)) : null;
+  // Bookmaker breakdown for current tip
+  const bmBreakdown = oddsVerified && oddsData?.bookmakers
+    ? getBookmakerOddsForTip(tip, oddsData.bookmakers).slice(0, 5)
+    : [];
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -144,7 +257,7 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
     const trimmedTip = tip.trim();
     if (matchMode === "today") {
       if (!matchId) {
-        setError("Pick a match from today’s fixtures or switch to Manual fixture.");
+        setError("Pick a match from today's fixtures or switch to Manual fixture.");
         return;
       }
     } else {
@@ -227,6 +340,8 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
           odds: oddsNumber,
           stake: stakeNumber,
           reasoning: reasoning.trim() || null,
+          odds_verified: oddsVerified,
+          odds_source: oddsVerified ? "the-odds-api" : "manual",
           ...manualPayload,
         }),
       });
@@ -249,6 +364,8 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
       setManualAway("");
       setManualKickoff("");
       setMatchId("");
+      setOddsData(null);
+      setOddsVerified(false);
       try {
         const r2 = await fetch("/api/bankroll", { method: "GET" });
         if (r2.ok) {
@@ -273,6 +390,7 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
       </CardHeader>
       <CardContent>
         <form onSubmit={onSubmit} className="space-y-4">
+          {/* Match mode toggle */}
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -284,7 +402,7 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
                   : "border-border bg-background/20 text-muted hover:bg-background/30",
               )}
             >
-              Today’s fixture
+              Today&apos;s fixture
             </button>
             <button
               type="button"
@@ -310,14 +428,14 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
                   className="h-11 w-full rounded-xl border border-border bg-background/30 px-3 text-sm text-foreground"
                   disabled={isLoading}
                 >
-                  <option value="">{isLoading ? "Loading…" : "Select today’s fixture"}</option>
+                  <option value="">{isLoading ? "Loading…" : "Select today's fixture"}</option>
                   {fixtures.map((f) => (
                     <option key={String(f.id)} value={String(f.id)}>
                       {makeTitle(f)} • {formatKickoff(f.match_date)}
                     </option>
                   ))}
                 </select>
-                <div className="text-xs text-muted">Uses today’s fixtures list.</div>
+                <div className="text-xs text-muted">Uses today&apos;s fixtures list.</div>
               </label>
             ) : (
               <div className="space-y-4">
@@ -379,6 +497,7 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
             </label>
           </div>
 
+          {/* Tip + Odds */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <label className="space-y-2">
               <div className="text-xs font-medium text-foreground">Tip</div>
@@ -424,26 +543,94 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
               )}
             </label>
 
-            <label className="space-y-2">
-              <div className="text-xs font-medium text-foreground">Odds</div>
-              <input
-                value={odds}
-                onChange={(e) => setOdds(e.target.value)}
-                inputMode="decimal"
-                placeholder="1.80"
-                className={cn(
-                  "h-11 w-full rounded-xl border bg-background/30 px-3 text-sm text-foreground placeholder:text-muted",
-                  oddsTooLow ? "border-amber-500/50" : "border-border",
+            {/* Odds section — verified or manual */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="text-xs font-medium text-foreground">Odds</div>
+                {oddsFetching && (
+                  <span className="inline-flex items-center gap-1 text-xs text-blue-400">
+                    <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+                    Fetching live odds…
+                  </span>
                 )}
-              />
+                {!oddsFetching && oddsVerified && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                    ✓ Verified
+                  </span>
+                )}
+                {!oddsFetching && matchMode === "today" && matchId && !oddsVerified && oddsData && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-400">
+                    ⚠ Unverified
+                  </span>
+                )}
+                {!oddsFetching && oddsVerified && matchId && (
+                  <button
+                    type="button"
+                    onClick={() => void fetchOdds(matchId)}
+                    className="ml-auto text-xs text-blue-400 hover:text-blue-300"
+                  >
+                    ↻ Refresh
+                  </button>
+                )}
+              </div>
+
+              {oddsVerified ? (
+                <>
+                  <input
+                    value={odds}
+                    readOnly
+                    className="h-11 w-full rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3 text-sm font-semibold text-emerald-300 cursor-not-allowed"
+                  />
+                  {bmBreakdown.length > 0 && (
+                    <div className="rounded-lg border border-border bg-background/20 p-2">
+                      <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted">
+                        Bookmaker breakdown
+                      </div>
+                      <div className="space-y-0.5">
+                        {bmBreakdown.map((bm) => (
+                          <div key={bm.name} className="flex items-center justify-between text-xs">
+                            <span className="text-muted">{bm.name}</span>
+                            <span className="font-semibold text-foreground">{bm.odds.toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <input
+                    value={odds}
+                    onChange={(e) => setOdds(e.target.value)}
+                    inputMode="decimal"
+                    placeholder="1.80"
+                    className={cn(
+                      "h-11 w-full rounded-xl border bg-background/30 px-3 text-sm text-foreground placeholder:text-muted",
+                      oddsTooLow ? "border-amber-500/50" : "border-border",
+                    )}
+                  />
+                  {matchMode === "today" && matchId && !oddsFetching && oddsData && !oddsData.available && (
+                    <div className="text-xs text-amber-400">
+                      Odds not available for this match. Enter odds from your bookmaker.
+                    </div>
+                  )}
+                </>
+              )}
               {oddsTooLow ? (
                 <div className="text-xs text-amber-400">
                   Only predictions at odds 1.50+ count toward your rank
                 </div>
               ) : null}
-            </label>
+              {oddsData?.fetched_at && oddsVerified && (
+                <div className="text-[10px] text-muted">
+                  Odds updated: {timeAgo(oddsData.fetched_at)}
+                  {oddsData.cached && " (cached)"}
+                </div>
+              )}
+            </div>
           </div>
 
+          {/* Stake + Reasoning */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <label className="space-y-2">
               <div className="text-xs font-medium text-foreground">Stake (optional)</div>

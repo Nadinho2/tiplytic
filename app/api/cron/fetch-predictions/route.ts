@@ -2,6 +2,7 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 
+import { createServiceClient } from "@/lib/admin";
 import {
   fetchPredictionsFromN8N,
   logCronRun,
@@ -25,6 +26,37 @@ function unwrapPredictions(n8nResponse: unknown): unknown[] {
   return [];
 }
 
+async function preWarmOddsCache() {
+  const supabase = createServiceClient();
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+  if (!appUrl) return { warmed: 0 };
+
+  // Get today's predictions that don't have cached odds yet
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0)).toISOString();
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59)).toISOString();
+
+  const { data: predictions } = await supabase
+    .from("predictions")
+    .select("id")
+    .gte("match_date", start)
+    .lte("match_date", end)
+    .limit(50);
+
+  if (!predictions?.length) return { warmed: 0 };
+
+  let warmed = 0;
+  for (const prediction of predictions) {
+    try {
+      await fetch(`${appUrl}/api/odds?match_id=${prediction.id}`);
+      warmed++;
+    } catch {}
+    // Small delay to avoid hitting API rate limits
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return { warmed };
+}
+
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret) {
@@ -42,10 +74,18 @@ export async function GET(request: Request) {
     const result = await savePredictionsToSupabase(predictions);
     const status = result.errors.length ? "failed" : "success";
 
+    // Pre-warm odds cache for today's predictions
+    let oddsWarmed = 0;
+    try {
+      const warmResult = await preWarmOddsCache();
+      oddsWarmed = warmResult.warmed;
+    } catch {}
+
     await logCronRun(status, result.saved, {
       saved: result.saved,
       skipped: result.skipped,
       errors: result.errors,
+      odds_warmed: oddsWarmed,
     });
 
     return NextResponse.json({
@@ -53,6 +93,7 @@ export async function GET(request: Request) {
       saved: result.saved,
       skipped: result.skipped,
       errors: result.errors,
+      odds_warmed: oddsWarmed,
       ran_at: new Date().toISOString(),
     });
   } catch (e) {
@@ -65,4 +106,5 @@ export async function GET(request: Request) {
     );
   }
 }
+
 
