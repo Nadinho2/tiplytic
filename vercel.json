@@ -2,6 +2,7 @@
   "crons": [
     { "path": "/api/cron/weekly-report", "schedule": "0 8 * * 1" },
     { "path": "/api/cron/admin-weekly-summary", "schedule": "0 9 * * 1" },
-    { "path": "/api/cron/subscriptions", "schedule": "0 8 * * *" }
+    { "path": "/api/cron/subscriptions", "schedule": "0 8 * * *" },
+    { "path": "/api/cron/fetch-predictions", "schedule": "0 2 * * *" }
   ]
 }
