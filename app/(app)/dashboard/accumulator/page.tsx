@@ -79,6 +79,14 @@ function parseOdds(v: number | string | null | undefined) {
   return null;
 }
 
+function makeCustomId() {
+  try {
+    return `custom:${crypto.randomUUID()}`;
+  } catch {
+    return `custom:${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+}
+
 export default function Page() {
   const [tab, setTab] = useState<"builder" | "history">("builder");
 
@@ -92,6 +100,12 @@ export default function Page() {
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState<string | null>(null);
   const [placedId, setPlacedId] = useState<string | null>(null);
+
+  const [manualHome, setManualHome] = useState("");
+  const [manualAway, setManualAway] = useState("");
+  const [manualTip, setManualTip] = useState("");
+  const [manualOdds, setManualOdds] = useState("");
+  const [manualLeague, setManualLeague] = useState("");
 
   const [history, setHistory] = useState<AccaRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -163,6 +177,11 @@ export default function Page() {
     return round2(selections.reduce((acc, s) => acc * s.odds, 1));
   }, [selections]);
 
+  const hasManual = useMemo(
+    () => selections.some((s) => String(s.prediction_id).startsWith("custom:")),
+    [selections],
+  );
+
   const stakeNumber = Math.floor(Number(stake));
   const potentialReturn = useMemo(() => {
     if (!selections.length) return 0;
@@ -187,7 +206,45 @@ export default function Page() {
     const id = String(p.id);
     if (selections.some((s) => s.prediction_id === id)) return;
 
-    setSelections((prev) => [...prev, { prediction_id: id, tip: p.tip ?? "—", odds }]);
+    const label = `${matchTitle(p)} • ${p.tip ?? "—"}`;
+    setSelections((prev) => [...prev, { prediction_id: id, tip: label, odds }]);
+  }
+
+  function addManualSelection() {
+    setPlacedId(null);
+    setPlaceError(null);
+    if (selections.length >= 10) {
+      setPlaceError("Max 10 selections per accumulator");
+      return;
+    }
+
+    const home = manualHome.trim();
+    const away = manualAway.trim();
+    const tip = manualTip.trim();
+    const odds = Number(manualOdds);
+    if (!home || !away) {
+      setPlaceError("Enter home and away teams for the manual leg.");
+      return;
+    }
+    if (!tip) {
+      setPlaceError("Enter a prediction/tip for the manual leg.");
+      return;
+    }
+    if (!Number.isFinite(odds) || odds <= 1) {
+      setPlaceError("Manual odds must be greater than 1.00.");
+      return;
+    }
+
+    const league = manualLeague.trim();
+    const label = `${league ? `${league} • ` : ""}${home} vs ${away} • ${tip}`;
+    if (selections.some((s) => s.tip === label)) return;
+
+    setSelections((prev) => [...prev, { prediction_id: makeCustomId(), tip: label, odds: round2(odds) }]);
+    setManualHome("");
+    setManualAway("");
+    setManualTip("");
+    setManualOdds("");
+    setManualLeague("");
   }
 
   function removeSelection(id: string) {
@@ -202,17 +259,19 @@ export default function Page() {
       setPlaceError("Add at least one selection");
       return;
     }
-    if (!Number.isFinite(stakeNumber) || stakeNumber < 100) {
-      setPlaceError("Stake must be at least ₦100");
-      return;
-    }
-    if (maxStake != null && stakeNumber > maxStake) {
-      setPlaceError(`Max stake is ₦${maxStake.toLocaleString()}.`);
-      return;
-    }
-    if (bankroll != null && stakeNumber > bankroll) {
-      setPlaceError("Insufficient bankroll balance");
-      return;
+    if (!hasManual) {
+      if (!Number.isFinite(stakeNumber) || stakeNumber < 100) {
+        setPlaceError("Stake must be at least ₦100");
+        return;
+      }
+      if (maxStake != null && stakeNumber > maxStake) {
+        setPlaceError(`Max stake is ₦${maxStake.toLocaleString()}.`);
+        return;
+      }
+      if (bankroll != null && stakeNumber > bankroll) {
+        setPlaceError("Insufficient bankroll balance");
+        return;
+      }
     }
 
     setPlacing(true);
@@ -220,7 +279,11 @@ export default function Page() {
       const res = await fetch("/api/accumulators", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ selections, stake: stakeNumber }),
+        body: JSON.stringify({
+          selections,
+          stake: hasManual ? 0 : stakeNumber,
+          mode: hasManual ? "draft" : "bankroll",
+        }),
       });
       const json = (await res.json().catch(() => ({}))) as {
         error?: string;
@@ -444,6 +507,53 @@ export default function Page() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
+                <div className="rounded-2xl border border-border bg-background/20 p-4">
+                  <div className="text-xs font-semibold text-foreground">Add manual leg</div>
+                  <div className="mt-2 grid grid-cols-1 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <input
+                        value={manualHome}
+                        onChange={(e) => setManualHome(e.target.value)}
+                        placeholder="Home team"
+                        className="h-11 w-full rounded-xl border border-border bg-background/30 px-3 text-sm text-foreground placeholder:text-muted"
+                      />
+                      <input
+                        value={manualAway}
+                        onChange={(e) => setManualAway(e.target.value)}
+                        placeholder="Away team"
+                        className="h-11 w-full rounded-xl border border-border bg-background/30 px-3 text-sm text-foreground placeholder:text-muted"
+                      />
+                    </div>
+                    <input
+                      value={manualLeague}
+                      onChange={(e) => setManualLeague(e.target.value)}
+                      placeholder="League (optional)"
+                      className="h-11 w-full rounded-xl border border-border bg-background/30 px-3 text-sm text-foreground placeholder:text-muted"
+                    />
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <input
+                        value={manualTip}
+                        onChange={(e) => setManualTip(e.target.value)}
+                        placeholder="Tip (e.g. Over 2.5, BTTS Yes)"
+                        className="h-11 w-full rounded-xl border border-border bg-background/30 px-3 text-sm text-foreground placeholder:text-muted"
+                      />
+                      <input
+                        value={manualOdds}
+                        onChange={(e) => setManualOdds(e.target.value)}
+                        inputMode="decimal"
+                        placeholder="Odds (e.g. 1.85)"
+                        className="h-11 w-full rounded-xl border border-border bg-background/30 px-3 text-sm text-foreground placeholder:text-muted"
+                      />
+                    </div>
+                    <Button type="button" variant="secondary" onClick={addManualSelection}>
+                      Add manual leg
+                    </Button>
+                    <div className="text-xs text-muted">
+                      Manual legs can be saved as a slip. Virtual bankroll placing works only for TipLytic picks.
+                    </div>
+                  </div>
+                </div>
+
                 <div className="space-y-2">
                   {selections.length ? (
                     selections.map((s) => (
@@ -512,7 +622,7 @@ export default function Page() {
 
                   {placedId ? (
                     <div className="mt-4 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
-                      Placed.{" "}
+                      {hasManual ? "Saved." : "Placed."}{" "}
                       <Link
                         href={`/accumulators/${encodeURIComponent(placedId)}`}
                         className="font-semibold underline"
@@ -530,10 +640,12 @@ export default function Page() {
                       onClick={place}
                       disabled={placing || !selections.length}
                     >
-                      {placing ? "Placing…" : "Place on Virtual Bankroll"}
+                      {placing ? "Working…" : hasManual ? "Save slip" : "Place on Virtual Bankroll"}
                     </Button>
                     <div className="mt-2 text-xs text-muted">
-                      Max 10 selections. Accumulator wins only if all selections win. Voids are removed.
+                      {hasManual
+                        ? "Saved slips don’t affect your bankroll and don’t auto-settle."
+                        : "Max 10 selections. Accumulator wins only if all selections win. Voids are removed."}
                     </div>
                   </div>
                 </div>

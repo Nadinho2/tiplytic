@@ -251,14 +251,20 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
     }
   }, [matchId, matchMode, fetchOdds]);
 
+  const currentTipHasVerifiedOdds = useMemo(() => {
+    if (!oddsVerified || !oddsData) return false;
+    return getOddsForTip(tip, oddsData) != null;
+  }, [tip, oddsData, oddsVerified]);
+
   // Auto-update odds when tip changes and we have verified odds
   useEffect(() => {
-    if (!oddsVerified || !oddsData) return;
-    const matched = getOddsForTip(tip, oddsData);
-    if (matched != null) {
-      setOdds(matched.toFixed(2));
+    if (currentTipHasVerifiedOdds && oddsData) {
+      const matched = getOddsForTip(tip, oddsData);
+      if (matched != null) {
+        setOdds(matched.toFixed(2));
+      }
     }
-  }, [tip, oddsData, oddsVerified]);
+  }, [tip, oddsData, currentTipHasVerifiedOdds]);
 
   // Auto-refresh stale odds (> 3 hours)
   useEffect(() => {
@@ -467,8 +473,8 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
           odds: oddsNumber,
           stake: stakeNumber,
           reasoning: reasoning.trim() || null,
-          odds_verified: oddsVerified,
-          odds_source: oddsVerified ? "the-odds-api" : "manual",
+          odds_verified: currentTipHasVerifiedOdds,
+          odds_source: currentTipHasVerifiedOdds ? "the-odds-api" : "manual",
           ...manualPayload,
         }),
       });
@@ -774,19 +780,19 @@ export function SubmitPredictionForm({ className }: { className?: string }) {
                       Fetching live odds…
                     </span>
                   )}
-                  {!oddsFetching && oddsVerified && (
+                  {!oddsFetching && currentTipHasVerifiedOdds && (
                     <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
                       ✓ Verified
                     </span>
                   )}
-                  {!oddsFetching && matchMode === "today" && matchId && !oddsVerified && oddsData && (
+                  {!oddsFetching && matchMode === "today" && matchId && !currentTipHasVerifiedOdds && oddsData && (
                     <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-400">
                       ⚠ Unverified
                     </span>
                   )}
                 </div>
 
-                {oddsVerified ? (
+                {currentTipHasVerifiedOdds ? (
                   <>
                     <input
                       value={odds}

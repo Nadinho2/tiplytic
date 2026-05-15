@@ -80,6 +80,7 @@ function getErrorMessage(value: unknown) {
 function normalizeTab(value: string) {
   if (value === "leaderboard") return "leaderboard";
   if (value === "challenge") return "challenge";
+  if (value === "manual-picks") return "manual-picks";
   return "tipsters";
 }
 
@@ -115,6 +116,10 @@ export function CommunityClient({ initialTab }: { initialTab: string }) {
   const [matchIdDraft, setMatchIdDraft] = useState("");
   const [correctTipDraft, setCorrectTipDraft] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const [manualLoading, setManualLoading] = useState(false);
+  const [manualData, setManualData] = useState<any>(null);
+  const [manualResultFilter, setManualResultFilter] = useState("pending");
 
   useEffect(() => {
     if (tab !== "tipsters" && tab !== "leaderboard") return;
@@ -198,6 +203,49 @@ export function CommunityClient({ initialTab }: { initialTab: string }) {
       cancelled = true;
     };
   }, [tab]);
+
+  useEffect(() => {
+    if (tab !== "manual-picks") return;
+    let cancelled = false;
+    async function load() {
+      setManualLoading(true);
+      const res = await fetch(`/api/admin/community-predictions?result=${manualResultFilter}`, { method: "GET" }).catch(() => null);
+      const json = await res?.json().catch(() => null);
+      if (cancelled) return;
+      if (!res || !res.ok || !json || json.error) {
+        toast.error(json?.error || "Failed to load manual picks");
+        setManualData(null);
+      } else {
+        setManualData(json);
+      }
+      setManualLoading(false);
+    }
+    void load();
+    return () => { cancelled = true; };
+  }, [tab, manualResultFilter]);
+
+  async function settleManualPick(id: string | number, result: "win" | "loss" | "void") {
+    const ok = window.confirm(`Resolve this manual pick as ${result.toUpperCase()}?`);
+    if (!ok) return;
+
+    const res = await fetch("/api/admin/community-predictions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ predictionId: id, result }),
+    }).catch(() => null);
+
+    const json = await res?.json().catch(() => null);
+    if (!res || !res.ok) {
+      toast.error(json?.error || "Failed to settle prediction");
+      return;
+    }
+    toast.success("Prediction settled");
+    
+    const refreshRes = await fetch(`/api/admin/community-predictions?result=${manualResultFilter}`, { method: "GET" }).catch(() => null);
+    if (refreshRes?.ok) {
+      setManualData(await refreshRes.json());
+    }
+  }
 
   const periodTabs: Array<{ key: Period; label: string }> = useMemo(
     () => [
@@ -316,6 +364,15 @@ export function CommunityClient({ initialTab }: { initialTab: string }) {
         >
           Daily Challenge
         </Link>
+        <Link
+          href="/admin/community?tab=manual-picks"
+          className={cn(
+            "rounded-xl border px-3 py-2 text-sm font-semibold",
+            tab === "manual-picks" ? "border-[#3B82F6]/30 bg-[#3B82F6]/10 text-[#3B82F6]" : "border-white/10 bg-white/5 text-white",
+          )}
+        >
+          Manual Picks
+        </Link>
       </div>
 
       {tab === "challenge" ? (
@@ -427,6 +484,94 @@ export function CommunityClient({ initialTab }: { initialTab: string }) {
                     </div>
                   </div>
                 ) : null}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : tab === "manual-picks" ? (
+        <Card className="bg-[#0D1320]">
+          <CardHeader>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-foreground">Manual Predictions</div>
+                <div className="mt-1 text-sm text-muted">Settle user-submitted manual/custom predictions.</div>
+              </div>
+              <div>
+                <select
+                  value={manualResultFilter}
+                  onChange={(e) => setManualResultFilter(e.target.value)}
+                  className="h-9 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none"
+                >
+                  <option value="pending">Pending</option>
+                  <option value="all">All</option>
+                  <option value="win">Wins</option>
+                  <option value="loss">Losses</option>
+                  <option value="void">Voids</option>
+                </select>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {manualLoading ? (
+              <div className="rounded-2xl border border-border bg-background/20 p-6 text-sm text-muted">Loading…</div>
+            ) : (
+              <div className="overflow-hidden rounded-2xl border border-border bg-background/30">
+                <div className="grid grid-cols-12 bg-background/40 px-4 py-3 text-xs font-medium text-muted">
+                  <div className="col-span-3">User & Match</div>
+                  <div className="col-span-2">Date</div>
+                  <div className="col-span-2">Tip</div>
+                  <div className="col-span-1 text-right">Odds</div>
+                  <div className="col-span-1 text-right">Stake</div>
+                  <div className="col-span-3 text-right">Actions</div>
+                </div>
+                <div className="divide-y divide-border">
+                  {(manualData?.rows ?? []).map((r: any) => (
+                    <div key={r.id} className="grid grid-cols-12 items-center gap-2 px-4 py-3 text-sm">
+                      <div className="col-span-3 min-w-0">
+                        <div className="truncate font-medium text-foreground">{r.match_title || r.match || "—"}</div>
+                        <div className="mt-1 text-xs text-muted">User: {r.user_id?.slice(0, 8)}...</div>
+                      </div>
+                      <div className="col-span-2 text-muted">{formatDate(r.match_date || r.created_at)}</div>
+                      <div className="col-span-2 min-w-0">
+                        <div className="truncate text-foreground">{r.tip}</div>
+                        <div className="text-xs text-muted">{r.prediction_type}</div>
+                      </div>
+                      <div className="col-span-1 text-right text-foreground">{r.odds}</div>
+                      <div className="col-span-1 text-right text-foreground">{r.stake || "—"}</div>
+                      <div className="col-span-3 flex justify-end gap-2">
+                        {r.result === "pending" ? (
+                          <>
+                            <button
+                              onClick={() => void settleManualPick(r.id, "win")}
+                              className="rounded-lg border border-[#10B981]/30 bg-[#10B981]/10 px-2 py-1 text-xs font-semibold text-[#10B981] hover:bg-[#10B981]/20"
+                            >
+                              Win
+                            </button>
+                            <button
+                              onClick={() => void settleManualPick(r.id, "loss")}
+                              className="rounded-lg border border-[#EF4444]/30 bg-[#EF4444]/10 px-2 py-1 text-xs font-semibold text-[#EF4444] hover:bg-[#EF4444]/20"
+                            >
+                              Loss
+                            </button>
+                            <button
+                              onClick={() => void settleManualPick(r.id, "void")}
+                              className="rounded-lg border border-white/20 bg-white/10 px-2 py-1 text-xs font-semibold text-white hover:bg-white/20"
+                            >
+                              Void
+                            </button>
+                          </>
+                        ) : (
+                          <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-semibold uppercase text-white/70">
+                            {r.result}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {!manualData?.rows?.length ? (
+                    <div className="px-4 py-10 text-center text-sm text-muted">No manual predictions found.</div>
+                  ) : null}
+                </div>
               </div>
             )}
           </CardContent>

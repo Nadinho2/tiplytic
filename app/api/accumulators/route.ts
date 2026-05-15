@@ -92,6 +92,7 @@ export async function GET() {
 type PostBody = {
   selections: Selection[];
   stake: number;
+  mode?: string;
 };
 
 export async function POST(request: Request) {
@@ -101,10 +102,9 @@ export async function POST(request: Request) {
   const body = (await request.json()) as PostBody;
   const selections = Array.isArray(body.selections) ? body.selections : [];
   const stake = Math.floor(Number(body.stake));
+  const mode = String(body.mode ?? "").toLowerCase();
+  const isDraft = mode === "draft" || !Number.isFinite(stake) || stake <= 0;
 
-  if (!Number.isFinite(stake) || stake < 100) {
-    return NextResponse.json({ error: "Stake must be at least ₦100" }, { status: 400 });
-  }
   if (!selections.length) {
     return NextResponse.json({ error: "Add at least one selection" }, { status: 400 });
   }
@@ -127,24 +127,29 @@ export async function POST(request: Request) {
   }
 
   const combined = round2(normalized.reduce((acc, s) => acc * s.odds, 1));
-  const potentialReturn = round2(stake * combined);
+  const potentialReturn = isDraft ? null : round2(stake * combined);
 
   const supabase = createServiceClient();
-  const bankroll = await ensureBankroll(supabase, userId);
+  const bankroll = isDraft ? null : await ensureBankroll(supabase, userId);
 
-  const maxStake = Math.floor(bankroll.current * 0.2);
-  if (stake > maxStake) {
-    return NextResponse.json(
-      { error: `Max stake is ₦${maxStake.toLocaleString()}` },
-      { status: 400 },
-    );
-  }
-  if (stake > bankroll.current) {
-    return NextResponse.json({ error: "Insufficient bankroll balance" }, { status: 400 });
+  if (!isDraft) {
+    if (stake < 100) {
+      return NextResponse.json({ error: "Stake must be at least ₦100" }, { status: 400 });
+    }
+    const maxStake = Math.floor((bankroll as { current: number }).current * 0.2);
+    if (stake > maxStake) {
+      return NextResponse.json(
+        { error: `Max stake is ₦${maxStake.toLocaleString()}` },
+        { status: 400 },
+      );
+    }
+    if (stake > (bankroll as { current: number }).current) {
+      return NextResponse.json({ error: "Insufficient bankroll balance" }, { status: 400 });
+    }
   }
 
-  const nextBalance = bankroll.current - stake;
-  const nextPeak = Math.max(bankroll.peak, nextBalance);
+  const nextBalance = !isDraft ? (bankroll as { current: number }).current - stake : null;
+  const nextPeak = !isDraft ? Math.max((bankroll as { peak: number }).peak, nextBalance as number) : null;
 
   const { data: inserted, error } = await supabase
     .from("accumulators")
@@ -152,9 +157,9 @@ export async function POST(request: Request) {
       user_id: userId,
       selections: normalized,
       combined_odds: combined,
-      stake,
+      stake: isDraft ? null : stake,
       potential_return: potentialReturn,
-      result: "pending",
+      result: isDraft ? "draft" : "pending",
       created_at: new Date().toISOString(),
     })
     .select("*")
@@ -164,36 +169,38 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error?.message ?? "Failed to create accumulator" }, { status: 400 });
   }
 
-  await supabase
-    .from("virtual_bankrolls")
-    .upsert(
-      {
-        user_id: userId,
-        starting_balance: bankroll.starting,
-        current_balance: nextBalance,
-        peak_balance: nextPeak,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id" },
-    );
+  if (!isDraft) {
+    await supabase
+      .from("virtual_bankrolls")
+      .upsert(
+        {
+          user_id: userId,
+          starting_balance: (bankroll as { starting: number }).starting,
+          current_balance: nextBalance,
+          peak_balance: nextPeak,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" },
+      );
 
-  await supabase.from("bankroll_transactions").insert({
-    user_id: userId,
-    created_at: new Date().toISOString(),
-    type: "accumulator",
-    prediction_id: `accumulator:${String((inserted as { id: string }).id)}`,
-    match: `Accumulator (${normalized.length} selections)`,
-    tip: "ACCUMULATOR",
-    odds: combined,
-    stake,
-    returns: 0,
-    profit_loss: -stake,
-    balance_after: nextBalance,
-    status: "open",
-  });
+    await supabase.from("bankroll_transactions").insert({
+      user_id: userId,
+      created_at: new Date().toISOString(),
+      type: "accumulator",
+      prediction_id: `accumulator:${String((inserted as { id: string }).id)}`,
+      match: `Accumulator (${normalized.length} selections)`,
+      tip: "ACCUMULATOR",
+      odds: combined,
+      stake,
+      returns: 0,
+      profit_loss: -stake,
+      balance_after: nextBalance,
+      status: "open",
+    });
+  }
 
   return NextResponse.json({
     accumulator: inserted,
-    nextBalance,
+    nextBalance: typeof nextBalance === "number" ? nextBalance : undefined,
   });
 }

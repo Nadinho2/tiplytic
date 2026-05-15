@@ -56,7 +56,7 @@ export async function fetchOddsForMatch(
     const url = new URL(`${ODDS_API_BASE}/sports/${sportKey}/odds`);
     url.searchParams.set("apiKey", ODDS_API_KEY);
     url.searchParams.set("regions", "uk,eu,us");
-    url.searchParams.set("markets", "h2h,totals");
+    url.searchParams.set("markets", "h2h,totals,btts");
     url.searchParams.set("oddsFormat", "decimal");
     url.searchParams.set("dateFormat", "iso");
 
