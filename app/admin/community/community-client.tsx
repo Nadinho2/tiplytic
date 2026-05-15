@@ -67,6 +67,29 @@ type AdminPredictionsResponse = {
   error?: string;
 };
 
+type ManualPredictionRow = {
+  id: string | number;
+  created_at: string;
+  user_id: string;
+  match: string | null;
+  match_title: string | null;
+  match_date: string | null;
+  tip: string;
+  odds: number;
+  stake: number | null;
+  prediction_type: string;
+  result: "pending" | "win" | "loss" | "void" | string;
+  reasoning: string | null;
+};
+
+type ManualPredictionsResponse = {
+  rows: ManualPredictionRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  error?: string;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -118,7 +141,7 @@ export function CommunityClient({ initialTab }: { initialTab: string }) {
   const [saving, setSaving] = useState(false);
 
   const [manualLoading, setManualLoading] = useState(false);
-  const [manualData, setManualData] = useState<any>(null);
+  const [manualData, setManualData] = useState<ManualPredictionsResponse | null>(null);
   const [manualResultFilter, setManualResultFilter] = useState("pending");
 
   useEffect(() => {
@@ -525,7 +548,7 @@ export function CommunityClient({ initialTab }: { initialTab: string }) {
                   <div className="col-span-3 text-right">Actions</div>
                 </div>
                 <div className="divide-y divide-border">
-                  {(manualData?.rows ?? []).map((r: any) => (
+                  {(manualData?.rows ?? []).map((r: ManualPredictionRow) => (
                     <div key={r.id} className="grid grid-cols-12 items-center gap-2 px-4 py-3 text-sm">
                       <div className="col-span-3 min-w-0">
                         <div className="truncate font-medium text-foreground">{r.match_title || r.match || "—"}</div>
